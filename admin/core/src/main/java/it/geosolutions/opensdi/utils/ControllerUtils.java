@@ -1,6 +1,9 @@
 package it.geosolutions.opensdi.utils;
 
 import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.log4j.Logger;
 import org.springframework.security.core.Authentication;
@@ -8,6 +11,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.ui.ModelMap;
 
 public class ControllerUtils {
+
+/**
+ * Map to handle file uploading chunked
+ */
+public static Map<String, List<byte[]>> uploadedChunks = new ConcurrentHashMap<String, List<byte[]>>();
 
 /**
  * DOT character "."

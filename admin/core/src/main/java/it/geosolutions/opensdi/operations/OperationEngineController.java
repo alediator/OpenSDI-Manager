@@ -33,14 +33,12 @@ import java.io.OutputStream;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItem;
-import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,11 +66,6 @@ private final static Logger LOGGER = Logger
 
 @Autowired
 private GeoBatchClient geoBatchClient;
-
-/**
- * Map to handle file uploading chunked
- */
-private Map<String, List<byte[]>> uploadedChunks = new ConcurrentHashMap<String, List<byte[]>>();
 
 /**
  * Encapsulate operation Jsp into the template
@@ -251,7 +244,7 @@ public String issuePostToOperation(
     FileUpload uploadFile = new FileUpload();
     List<MultipartFile> files = new LinkedList<MultipartFile>();
     if (chunks > 0) {
-        List<byte[]> uploadedChunks = this.uploadedChunks.get(name);
+        List<byte[]> uploadedChunks = ControllerUtils.uploadedChunks.get(name);
         if (uploadedChunks == null) {
             // init bytes for the chunk upload
             uploadedChunks = new LinkedList<byte[]>();
@@ -259,7 +252,8 @@ public String issuePostToOperation(
         try {
             // add chunk on its position
             uploadedChunks.add(chunk, file.getBytes());
-            this.uploadedChunks.put(name, uploadedChunks);
+            ControllerUtils.uploadedChunks.put(name, uploadedChunks);
+            LOGGER.info("uploadedChunks size --> "+ ControllerUtils.uploadedChunks.size());
         } catch (IOException e) {
             LOGGER.error("Error on file upload", e);
         }
@@ -290,8 +284,7 @@ public String issuePostToOperation(
  */
 private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, String name) {
     // Temporal file to write chunked bytes
-    File outFile = FileUtils.getFile(FileUtils.getTempDirectory(),
-            name);
+    File outFile = new File(System.getProperty("java.io.tmpdir"), name);
 
     // total file size
     int sizeThreshold = 0;
@@ -319,7 +312,7 @@ private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, Stri
         LOGGER.error("Error writing final file", e);
     } finally {
         // Remove bytes from memory
-        uploadedChunks.remove(file.getName());
+        ControllerUtils.uploadedChunks.remove(name);
     }
 
     return fileItem;
