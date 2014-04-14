@@ -33,6 +33,7 @@ import java.io.OutputStream;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -45,6 +46,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.http.HttpHeaders;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -231,36 +233,38 @@ public String issueGetToOperation(
  * @param request
  * @param model
  * @return
+ * @throws IOException 
  */
 @RequestMapping(value = "/operation/{operationId}/upload", method = RequestMethod.POST)
-public String issuePostToOperation(
+public String upload(
         @PathVariable(value = "operationId") String operationId,
         @RequestHeader HttpHeaders gotHeaders,
         @RequestParam MultipartFile file, @RequestParam String name,
         @RequestParam(required = false, defaultValue = "-1") int chunks,
         @RequestParam(required = false, defaultValue = "-1") int chunk,
-        HttpServletRequest request, ModelMap model) {
+        HttpServletRequest request, ModelMap model) throws IOException {
+    
+
+    if(LOGGER.isInfoEnabled()){
+        LOGGER.info("upload (name, chunks, chunk) --> " + name + "," + chunks + "," + chunk);
+        LOGGER.info("Uploading " + ControllerUtils.CONCURRENT_UPLOAD.size() + " files");
+    }
 
     FileUpload uploadFile = new FileUpload();
     List<MultipartFile> files = new LinkedList<MultipartFile>();
     if (chunks > 0) {
-        List<byte[]> uploadedChunks = ControllerUtils.uploadedChunks.get(name);
-        if (uploadedChunks == null) {
-            // init bytes for the chunk upload
-            uploadedChunks = new LinkedList<byte[]>();
+        // init bytes for the chunk upload
+        Entry<String, List<byte[]>> entry = ControllerUtils.CONCURRENT_UPLOAD.addChunk(name, chunks, chunk, file);
+        if(entry == null){
+            String msg = "Expired file upload dor file " + name;
+            LOGGER.error(msg);
+            throw new IOException(msg);
         }
-        try {
-            // add chunk on its position
-            uploadedChunks.add(chunk, file.getBytes());
-            ControllerUtils.uploadedChunks.put(name, uploadedChunks);
-            LOGGER.info("uploadedChunks size --> "+ ControllerUtils.uploadedChunks.size());
-        } catch (IOException e) {
-            LOGGER.error("Error on file upload", e);
-        }
+        List<byte[]> uploadedChunks = entry.getValue();
         if (chunk == chunks - 1) {
             // Create the upload file to be handled
             MultipartFile composedUpload = new CommonsMultipartFile(
-                    getFileItem(file, uploadedChunks, name));
+                    getFileItem(file, uploadedChunks, name, entry));
             files.add(composedUpload);
             uploadFile.setFiles(files);
         }
@@ -269,9 +273,16 @@ public String issuePostToOperation(
         files.add(file);
         uploadFile.setFiles(files);
     }
-    
     return issuePostToOperation(operationId, null, gotHeaders, uploadFile,
             request, model);
+}
+
+/**
+ *  Scheduled each 5 minutes. If an user stop an upload along 5 minutes, it will be removed from memory 
+ */
+@Scheduled(cron = "0 0/5 * * * ?")
+public void cleanupUploadedFiles(){
+    ControllerUtils.CONCURRENT_UPLOAD.cleanup();
 }
 
 /**
@@ -280,9 +291,10 @@ public String issuePostToOperation(
  * @param file
  * @param chunkedBytes
  * @param name
+ * @param entry 
  * @return
  */
-private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, String name) {
+private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, String name, Entry<String, List<byte[]>> entry) {
     // Temporal file to write chunked bytes
     File outFile = new File(System.getProperty("java.io.tmpdir"), name);
 
@@ -312,7 +324,7 @@ private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, Stri
         LOGGER.error("Error writing final file", e);
     } finally {
         // Remove bytes from memory
-        ControllerUtils.uploadedChunks.remove(name);
+        ControllerUtils.CONCURRENT_UPLOAD.remove(entry.getKey());
     }
 
     return fileItem;
