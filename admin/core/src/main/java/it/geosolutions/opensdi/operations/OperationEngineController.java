@@ -28,6 +28,7 @@ import it.geosolutions.opensdi.service.GeoBatchClient;
 import it.geosolutions.opensdi.utils.ControllerUtils;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.LinkedList;
@@ -245,22 +246,22 @@ public String upload(
         HttpServletRequest request, ModelMap model) throws IOException {
     
 
-    if(LOGGER.isInfoEnabled()){
-        LOGGER.info("upload (name, chunks, chunk) --> " + name + "," + chunks + "," + chunk);
-        LOGGER.info("Uploading " + ControllerUtils.CONCURRENT_UPLOAD.size() + " files");
+    if(LOGGER.isDebugEnabled()){
+        LOGGER.debug("upload (name, chunks, chunk) --> " + name + "," + chunks + "," + chunk);
+        LOGGER.debug("Uploading " + ControllerUtils.CONCURRENT_UPLOAD.size() + " files");
     }
 
     FileUpload uploadFile = new FileUpload();
     List<MultipartFile> files = new LinkedList<MultipartFile>();
     if (chunks > 0) {
         // init bytes for the chunk upload
-        Entry<String, List<byte[]>> entry = ControllerUtils.CONCURRENT_UPLOAD.addChunk(name, chunks, chunk, file);
+        Entry<String, List<String>> entry = ControllerUtils.CONCURRENT_UPLOAD.addChunk(name, chunks, chunk, file);
         if(entry == null){
             String msg = "Expired file upload dor file " + name;
             LOGGER.error(msg);
             throw new IOException(msg);
         }
-        List<byte[]> uploadedChunks = entry.getValue();
+        List<String> uploadedChunks = entry.getValue();
         if (chunk == chunks - 1) {
             // Create the upload file to be handled
             MultipartFile composedUpload = new CommonsMultipartFile(
@@ -289,19 +290,25 @@ public void cleanupUploadedFiles(){
  * Obtain a temporal file item with chunked bytes
  * 
  * @param file
- * @param chunkedBytes
+ * @param uploadedChunks
  * @param name
  * @param entry 
  * @return
  */
-private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, String name, Entry<String, List<byte[]>> entry) {
+private FileItem getFileItem(MultipartFile file, List<String> uploadedChunks, String name, Entry<String, List<String>> entry) {
     // Temporal file to write chunked bytes
     File outFile = new File(System.getProperty("java.io.tmpdir"), name);
-
+    if(LOGGER.isTraceEnabled()){
+        LOGGER.trace("Merging uploaded chunks in " + outFile.getAbsolutePath());
+    }
+    List<File> tmpFiles = new LinkedList<File>(); 
+    
     // total file size
     int sizeThreshold = 0;
-    for (byte[] bytes : chunkedBytes) {
-        sizeThreshold += bytes.length;
+    for (String filePath : uploadedChunks) {
+        File tmpFile = new File(filePath);
+        tmpFiles.add(tmpFile);
+        sizeThreshold += tmpFile.length();
     }
 
     // Get file item
@@ -313,8 +320,17 @@ private FileItem getFileItem(MultipartFile file, List<byte[]> chunkedBytes, Stri
         outputStream = fileItem.getOutputStream();
 
         // write bytes
-        for (byte[] readedBytes : chunkedBytes) {
-            outputStream.write(readedBytes, 0, readedBytes.length);
+        for (File tmpFile : tmpFiles) {
+            if(LOGGER.isTraceEnabled()){
+                LOGGER.trace("Merging uploaded from " + tmpFile.getAbsolutePath());
+            }
+            FileInputStream fis = new FileInputStream(tmpFile);
+            int c;
+
+            while ((c = fis.read()) != -1) {
+                outputStream.write(c);
+            }
+            fis.close();
         }
 
         // close the file

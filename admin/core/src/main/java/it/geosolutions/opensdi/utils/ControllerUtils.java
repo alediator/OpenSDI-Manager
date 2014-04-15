@@ -1,6 +1,7 @@
 package it.geosolutions.opensdi.utils;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Date;
 import java.util.LinkedList;
@@ -87,7 +88,7 @@ public static class CONCURRENT_UPLOAD {
 /**
  * Map to handle file uploading chunked
  */
-private static Map<String, List<byte[]>> UPLOADED_CHUNKS = new ConcurrentHashMap<String, List<byte[]>>();
+private static Map<String, List<String>> UPLOADED_CHUNKS = new ConcurrentHashMap<String, List<String>>();
 
 /**
  * Pending chunks on last review and his size
@@ -122,18 +123,20 @@ public static final int MAX_SIM_UPLOAD = 100;
  * @return current list of byte arrays for the file
  * @throws IOException if no more uploads are available
  */
-public static Entry<String, List<byte[]>> addChunk(String name, int chunks,
+public static Entry<String, List<String>> addChunk(String name, int chunks,
         int chunk, MultipartFile file) throws IOException {
-    Entry<String, List<byte[]>> entry = null;
+    Entry<String, List<String>> entry = null;
     try {
         entry = getChunk(name, chunks, chunk);
         if (LOGGER.isTraceEnabled())
             LOGGER.trace("entry [" + entry.getKey() + "] found ");
-        List<byte[]> uploadedChunks = entry.getValue();
+        List<String> uploadedChunks = entry.getValue();
+        String tmpFile = createTemporalFile(entry.getKey(), file.getBytes(),
+                entry.getValue().size());
         // add chunk on its position
-        uploadedChunks.add(chunk, file.getBytes());
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("uploadedChunks size[" + entry.getKey() + "] --> "
+        uploadedChunks.add(chunk, tmpFile);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("uploadedChunks size[" + entry.getKey() + "] --> "
                     + uploadedChunks.size());
         }
     } catch (IOException e) {
@@ -141,6 +144,30 @@ public static Entry<String, List<byte[]>> addChunk(String name, int chunks,
     }
 
     return entry;
+}
+
+/**
+ * Create a temporal file with a byte array
+ * 
+ * @param key of the file
+ * @param bytes to write
+ * @param i index by the file name
+ * @return absolute path to the file
+ * @throws IOException
+ */
+private static String createTemporalFile(String key, byte[] bytes, int i)
+        throws IOException {
+    String filePath = System.getProperty("java.io.tmpdir") + File.separator
+            + (key + i);
+    if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Writing temporal content to " + filePath);
+    }
+    FileOutputStream fos = new FileOutputStream(filePath);
+    for (byte b : bytes) {
+        fos.write(b);
+    }
+    fos.close();
+    return filePath;
 }
 
 /**
@@ -153,12 +180,12 @@ public static Entry<String, List<byte[]>> addChunk(String name, int chunks,
  * @return current entry for the file
  * @throws IOException if no more uploads are available
  */
-public static Entry<String, List<byte[]>> getChunk(String name, int chunks,
+public static Entry<String, List<String>> getChunk(String name, int chunks,
         int chunk) throws IOException {
     Integer key = null;
 
     // init bytes for the chunk upload
-    List<byte[]> uploadedChunks = UPLOADED_CHUNKS.get(name);
+    List<String> uploadedChunks = UPLOADED_CHUNKS.get(name);
     if (chunk == 0) {
         if (uploadedChunks != null) {
             key = -1;
@@ -167,7 +194,7 @@ public static Entry<String, List<byte[]>> getChunk(String name, int chunks,
                 uploadedChunks = UPLOADED_CHUNKS.get(name + "_" + key);
             }
         }
-        uploadedChunks = new LinkedList<byte[]>();
+        uploadedChunks = new LinkedList<String>();
     } else if (uploadedChunks == null || uploadedChunks.size() != chunk) {
         key = -1;
         while ((uploadedChunks == null || uploadedChunks.size() != chunk)
@@ -185,8 +212,8 @@ public static Entry<String, List<byte[]>> getChunk(String name, int chunks,
     // save and return entry
     String mapKey = key != null ? name + "_" + key : name;
     UPLOADED_CHUNKS.put(mapKey, uploadedChunks);
-    Entry<String, List<byte[]>> entry = null;
-    for (Entry<String, List<byte[]>> mapEntry : UPLOADED_CHUNKS.entrySet()) {
+    Entry<String, List<String>> entry = null;
+    for (Entry<String, List<String>> mapEntry : UPLOADED_CHUNKS.entrySet()) {
         if (mapEntry.getKey().equals(mapKey)) {
             entry = mapEntry;
             break;
@@ -209,7 +236,19 @@ public static int size() {
  * @param key
  */
 public static void remove(String key) {
+    if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Removing uploading file "+ key);
+    }
+    // remove temporal content
+    for (String filePath : UPLOADED_CHUNKS.get(key)) {
+        File tmpFile = new File(filePath);
+        tmpFile.delete();
+    }
     UPLOADED_CHUNKS.remove(key);
+
+    // remove it from pending chunks
+    if (PENDING_CHUNKS.containsKey(key))
+        PENDING_CHUNKS.remove(key);
 }
 
 /**
@@ -233,8 +272,8 @@ public static void cleanup() {
                 if (PENDING_CHUNKS.get(key).equals(size)) {
                     if (LOGGER.isInfoEnabled())
                         LOGGER.info("Removing incomplete upload [" + key + "]");
-                    UPLOADED_CHUNKS.remove(key);
-                    PENDING_CHUNKS.remove(key);
+                    // remove
+                    remove(key);
                 } else {
                     PENDING_CHUNKS.put(key, size);
                 }
