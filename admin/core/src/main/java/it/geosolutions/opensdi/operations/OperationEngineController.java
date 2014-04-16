@@ -398,16 +398,29 @@ public String issuePostToOperation(
 
         }
 
+        // Get file(s)
         List<File> files = uploadFile.getFiles();
+        if ((files == null 
+                || files.size() == 0) 
+                && uploadFile.getFile() != null) {
+            try {
+                files = new LinkedList<File>();
+                files.add(fileUploadService.getCompletedFile(uploadFile.getFile().getOriginalFilename(), uploadFile.getFile()));
+            } catch (Exception e) {
+                LOGGER.error("Error uploading file", e);
+            }
+        }
 
         @SuppressWarnings("unchecked")
         Map<String, String[]> parameters = request.getParameterMap();
 
-        for (String key : parameters.keySet()) {
-            System.out.println(key);
-            String[] vals = parameters.get(key);
-            for (String val : vals)
-                System.out.println(" -> " + val);
+        if(LOGGER.isTraceEnabled()){
+            for (String key : parameters.keySet()) {
+                LOGGER.trace(key);
+                String[] vals = parameters.get(key);
+                for (String val : vals)
+                    LOGGER.trace(" -> " + val);
+            }
         }
 
         if (null != files && files.size() > 0) {

@@ -232,7 +232,7 @@
 		    <table id="fileTable">
 		    	<tr>
 		            <td><div class="input-append">
-						<input  name="files[0]" type="file" accept="${not empty accept ?accept :''}" />
+						<input  name="file" type="file" accept="${not empty accept ?accept :''}" />
 						</div>
 					</td>
 		        </tr>
