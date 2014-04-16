@@ -27,7 +27,6 @@ import it.geosolutions.opensdi.service.GeoBatchClient;
 import it.geosolutions.opensdi.utils.ControllerUtils;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -46,7 +45,6 @@ import org.springframework.context.support.AbstractRefreshableApplicationContext
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.multipart.MultipartFile;
 
 @Controller
 public class FileBrowserOperationController extends UserOperation implements
@@ -134,25 +132,24 @@ public FileBrowserOperationController() {
 public String saveFileAndList(
         @ModelAttribute("uploadFile") FileUpload uploadFile, ModelMap model) {
 
-    List<MultipartFile> files = uploadFile.getFiles();
+    List<File> files = uploadFile.getFiles();
 
     List<String> fileNames = new ArrayList<String>();
 
     HashMap<String, List<Operation>> availableOperations = getAvailableOperations();
 
     if (null != files && files.size() > 0) {
-        for (MultipartFile multipartFile : files) {
+        for (File multipartFile : files) {
 
-            String fileName = multipartFile.getOriginalFilename();
+            String fileName = multipartFile.getName();
             if (!"".equalsIgnoreCase(fileName)) {
                 // Handle file content - multipartFile.getInputStream()
                 try {
-                    multipartFile.transferTo(new File(getRunTimeDir()
-                            + fileName));
+                    multipartFile.renameTo(new File(getRunTimeDir() + fileName));
                 } catch (IllegalStateException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
+                    LOGGER.error("Error uploading files", e);
+                } catch (Exception e) {
+                    LOGGER.error("Error uploading files", e);
                 }
                 fileNames.add(fileName);
             }
@@ -289,7 +286,7 @@ public String getJsp() {
 
 @Override
 public String getJsp(ModelMap model, HttpServletRequest request,
-        List<MultipartFile> files) {
+        List<File> files) {
     
     registerManager();
 
@@ -376,17 +373,17 @@ public String getJsp(ModelMap model, HttpServletRequest request,
 
     if (null != files && files.size() > 0) {
         List<String> fileNames = new ArrayList<String>();
-        for (MultipartFile multipartFile : files) {
+        for (File multipartFile : files) {
             if (multipartFile == null)
                 continue;
-            String fileName = multipartFile.getOriginalFilename();
+            String fileName = multipartFile.getName();
             if (!"".equalsIgnoreCase(fileName)) {
                 try {
-                    multipartFile.transferTo(new File(baseDir + fileName));
+                    multipartFile.renameTo(new File(baseDir + fileName));
                 } catch (IllegalStateException e) {
                     LOGGER.error(e.getMessage());
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } catch (Exception e) {
+                    LOGGER.error("Error uploading files", e);
                 }
                 fileNames.add(fileName);
             }

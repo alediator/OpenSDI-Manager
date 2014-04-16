@@ -24,13 +24,12 @@ import it.geosolutions.geobatch.services.rest.GeoBatchRESTClient;
 import it.geosolutions.geobatch.services.rest.RESTFlowService;
 import it.geosolutions.geobatch.services.rest.model.RESTRunInfo;
 import it.geosolutions.opensdi.model.FileUpload;
+import it.geosolutions.opensdi.service.FileUploadService;
 import it.geosolutions.opensdi.service.GeoBatchClient;
 import it.geosolutions.opensdi.utils.ControllerUtils;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -39,15 +38,12 @@ import java.util.Map.Entry;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.commons.fileupload.FileItem;
-import org.apache.commons.fileupload.disk.DiskFileItem;
 import org.apache.log4j.Logger;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.http.HttpHeaders;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -57,7 +53,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 @Controller
 public class OperationEngineController implements ApplicationContextAware {
@@ -69,6 +64,9 @@ private final static Logger LOGGER = Logger
 
 @Autowired
 private GeoBatchClient geoBatchClient;
+
+@Autowired
+private FileUploadService fileUploadService;
 
 /**
  * Encapsulate operation Jsp into the template
@@ -248,102 +246,31 @@ public String upload(
 
     if(LOGGER.isDebugEnabled()){
         LOGGER.debug("upload (name, chunks, chunk) --> " + name + "," + chunks + "," + chunk);
-        LOGGER.debug("Uploading " + ControllerUtils.CONCURRENT_UPLOAD.size() + " files");
+        LOGGER.debug("Uploading " + fileUploadService.size() + " files");
     }
 
     FileUpload uploadFile = new FileUpload();
-    List<MultipartFile> files = new LinkedList<MultipartFile>();
+    List<File> files = new LinkedList<File>();
     if (chunks > 0) {
         // init bytes for the chunk upload
-        Entry<String, List<String>> entry = ControllerUtils.CONCURRENT_UPLOAD.addChunk(name, chunks, chunk, file);
+        Entry<String, ?> entry = fileUploadService.addChunk(name, chunks, chunk, file);
         if(entry == null){
             String msg = "Expired file upload dor file " + name;
             LOGGER.error(msg);
             throw new IOException(msg);
         }
-        List<String> uploadedChunks = entry.getValue();
         if (chunk == chunks - 1) {
             // Create the upload file to be handled
-            MultipartFile composedUpload = new CommonsMultipartFile(
-                    getFileItem(file, uploadedChunks, name, entry));
-            files.add(composedUpload);
+            files.add(fileUploadService.getCompletedFile(name, entry));
             uploadFile.setFiles(files);
         }
     } else {
         // Create the upload file to be handled
-        files.add(file);
+        files.add(fileUploadService.getCompletedFile(name, file));
         uploadFile.setFiles(files);
     }
     return issuePostToOperation(operationId, null, gotHeaders, uploadFile,
             request, model);
-}
-
-/**
- *  Scheduled each 5 minutes. If an user stop an upload along 5 minutes, it will be removed from memory 
- */
-@Scheduled(cron = "0 0/5 * * * ?")
-public void cleanupUploadedFiles(){
-    ControllerUtils.CONCURRENT_UPLOAD.cleanup();
-}
-
-/**
- * Obtain a temporal file item with chunked bytes
- * 
- * @param file
- * @param uploadedChunks
- * @param name
- * @param entry 
- * @return
- */
-private FileItem getFileItem(MultipartFile file, List<String> uploadedChunks, String name, Entry<String, List<String>> entry) {
-    // Temporal file to write chunked bytes
-    File outFile = new File(System.getProperty("java.io.tmpdir"), name);
-    if(LOGGER.isTraceEnabled()){
-        LOGGER.trace("Merging uploaded chunks in " + outFile.getAbsolutePath());
-    }
-    List<File> tmpFiles = new LinkedList<File>(); 
-    
-    // total file size
-    int sizeThreshold = 0;
-    for (String filePath : uploadedChunks) {
-        File tmpFile = new File(filePath);
-        tmpFiles.add(tmpFile);
-        sizeThreshold += tmpFile.length();
-    }
-
-    // Get file item
-    FileItem fileItem = new DiskFileItem("tmpFile", file.getContentType(),
-            false, name, sizeThreshold, outFile);
-    try {
-
-        OutputStream outputStream;
-        outputStream = fileItem.getOutputStream();
-
-        // write bytes
-        for (File tmpFile : tmpFiles) {
-            if(LOGGER.isTraceEnabled()){
-                LOGGER.trace("Merging uploaded from " + tmpFile.getAbsolutePath());
-            }
-            FileInputStream fis = new FileInputStream(tmpFile);
-            int c;
-
-            while ((c = fis.read()) != -1) {
-                outputStream.write(c);
-            }
-            fis.close();
-        }
-
-        // close the file
-        outputStream.flush();
-        outputStream.close();
-    } catch (IOException e) {
-        LOGGER.error("Error writing final file", e);
-    } finally {
-        // Remove bytes from memory
-        ControllerUtils.CONCURRENT_UPLOAD.remove(entry.getKey());
-    }
-
-    return fileItem;
 }
 
 @RequestMapping(value = "/operation/{operationId}", method = RequestMethod.POST)
@@ -471,7 +398,7 @@ public String issuePostToOperation(
 
         }
 
-        List<MultipartFile> files = uploadFile.getFiles();
+        List<File> files = uploadFile.getFiles();
 
         @SuppressWarnings("unchecked")
         Map<String, String[]> parameters = request.getParameterMap();
@@ -484,7 +411,7 @@ public String issuePostToOperation(
         }
 
         if (null != files && files.size() > 0) {
-            for (MultipartFile multipartFile : files) {
+            for (File multipartFile : files) {
                 if (multipartFile == null) {
                     continue;
                 }

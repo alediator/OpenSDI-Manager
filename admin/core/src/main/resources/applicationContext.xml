@@ -18,6 +18,13 @@
 
     <context:annotation-config />
       
+    <!-- File upload service -->
+    <bean id="fileUploadService" class="it.geosolutions.opensdi.service.impl.FileUploadServiceImpl">
+      <property name="minInterval" value="1000000000"></property>
+      <property name="maxSimultaneousUpload" value="100"></property>
+      <!-- <property name="temporaryFolder" value="/tmp"></property> -->
+    </bean>  
+      
     <!-- GeoStore REST Client -->
     <bean id="geoStoreClient" class="it.geosolutions.geostore.services.rest.AdministratorGeoStoreClient">
       <property name="geostoreRestUrl" value="http://localhost/geostore"></property>

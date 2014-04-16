@@ -20,12 +20,12 @@
  */
 package it.geosolutions.opensdi.operations;
 
+import java.io.File;
 import java.util.List;
 
 import javax.servlet.http.HttpServletRequest;
 
 import org.springframework.ui.ModelMap;
-import org.springframework.web.multipart.MultipartFile;
 
 public interface Operation {
 	
@@ -53,6 +53,6 @@ public interface Operation {
 	/**
 	 * @return the Jsp name to build the GUI end set the provided model with the right attributes
 	 */
-	public String getJsp(ModelMap model, HttpServletRequest request, List<MultipartFile> files);
+	public String getJsp(ModelMap model, HttpServletRequest request, List<File> files);
 
 }
