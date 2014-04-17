@@ -22,6 +22,7 @@ package it.geosolutions.opensdi.operations;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -50,9 +51,14 @@ public interface Operation {
 	 */
 	public String getJsp();
 
-	/**
-	 * @return the Jsp name to build the GUI end set the provided model with the right attributes
-	 */
-	public String getJsp(ModelMap model, HttpServletRequest request, List<File> files);
+        /**
+         * @return the Jsp name to build the GUI end set the provided model with the right attributes
+         */
+        public String getJsp(ModelMap model, HttpServletRequest request, List<File> files);
+
+        /**
+         * @return the rest JSON response on file upload
+         */
+        public Map<String, Object> getRestResponse(ModelMap model, HttpServletRequest request, List<File> files);
 
 }

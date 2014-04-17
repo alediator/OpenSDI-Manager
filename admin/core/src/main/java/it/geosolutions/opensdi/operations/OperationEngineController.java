@@ -30,6 +30,7 @@ import it.geosolutions.opensdi.utils.ControllerUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 
 @Controller
@@ -224,7 +226,53 @@ public String issueGetToOperation(
 }
 
 /**
- * Handler for plupload files
+ * Handler for rest operations
+ * 
+ * @param operationId
+ * @param gotHeaders
+ * @param file uploaded
+ * @param request
+ * @param model
+ * @return
+ * @throws IOException
+ */
+@RequestMapping(value = "/operation/{operationId}/rest", method = {
+        RequestMethod.POST, RequestMethod.GET })
+public @ResponseBody
+Map<String, Object> upload(
+        @PathVariable(value = "operationId") String operationId,
+        @RequestHeader HttpHeaders gotHeaders,
+        @RequestParam(required = false) MultipartFile file,
+        @RequestParam(required = false) String name,
+        @RequestParam(required = false, defaultValue = "-1") int chunks,
+        @RequestParam(required = false, defaultValue = "-1") int chunk,
+        HttpServletRequest request, ModelMap model) throws IOException {
+    Map<String, Object> response = new HashMap<String, Object>();
+    try {
+        if (applicationContext.containsBean(operationId)
+                && applicationContext.isTypeMatch(operationId, Operation.class)) {
+            Operation operation = (Operation) applicationContext
+                    .getBean(operationId);
+            response = operation.getRestResponse(
+                    model,
+                    request,
+                    getFileUpload(operationId, gotHeaders, file, name, chunks,
+                            chunk, request, model).getFiles());
+        } else {
+            response.put(ControllerUtils.SUCCESS, false);
+            response.put(ControllerUtils.ROOT, "Unknown operation ["
+                    + operationId + "]");
+        }
+    } catch (Exception e) {
+        LOGGER.error("Error uploading files", e);
+        response.put(ControllerUtils.SUCCESS, false);
+        response.put(ControllerUtils.ROOT, e.getLocalizedMessage());
+    }
+    return response;
+}
+
+/**
+ * Handler for upload files
  * 
  * @param operationId
  * @param gotHeaders
@@ -235,7 +283,7 @@ public String issueGetToOperation(
  * @throws IOException 
  */
 @RequestMapping(value = "/operation/{operationId}/upload", method = RequestMethod.POST)
-public String upload(
+public String uploadAndRefresh(
         @PathVariable(value = "operationId") String operationId,
         @RequestHeader HttpHeaders gotHeaders,
         @RequestParam MultipartFile file, @RequestParam String name,
@@ -243,9 +291,28 @@ public String upload(
         @RequestParam(required = false, defaultValue = "-1") int chunk,
         HttpServletRequest request, ModelMap model) throws IOException {
     
+    return issuePostToOperation(operationId, null, gotHeaders, getFileUpload(operationId, gotHeaders, file, name, chunks, chunk, request, model),
+            request, model);
+}
 
-    if(LOGGER.isDebugEnabled()){
-        LOGGER.debug("upload (name, chunks, chunk) --> " + name + "," + chunks + "," + chunk);
+/**
+ * Get FileUpload on the request
+ * 
+ * @param operationId
+ * @param gotHeaders
+ * @param file uploaded
+ * @param request
+ * @param model
+ * @return
+ * @throws IOException
+ */
+public FileUpload getFileUpload(String operationId, HttpHeaders gotHeaders,
+        MultipartFile file, String name, int chunks, int chunk,
+        HttpServletRequest request, ModelMap model) throws IOException {
+
+    if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("upload (name, chunks, chunk) --> " + name + "," + chunks
+                + "," + chunk);
         LOGGER.debug("Uploading " + fileUploadService.size() + " files");
     }
 
@@ -253,8 +320,9 @@ public String upload(
     List<File> files = new LinkedList<File>();
     if (chunks > 0) {
         // init bytes for the chunk upload
-        Entry<String, ?> entry = fileUploadService.addChunk(name, chunks, chunk, file);
-        if(entry == null){
+        Entry<String, ?> entry = fileUploadService.addChunk(name, chunks,
+                chunk, file);
+        if (entry == null) {
             String msg = "Expired file upload dor file " + name;
             LOGGER.error(msg);
             throw new IOException(msg);
@@ -269,8 +337,8 @@ public String upload(
         files.add(fileUploadService.getCompletedFile(name, file));
         uploadFile.setFiles(files);
     }
-    return issuePostToOperation(operationId, null, gotHeaders, uploadFile,
-            request, model);
+
+    return uploadFile;
 }
 
 @RequestMapping(value = "/operation/{operationId}", method = RequestMethod.POST)

@@ -254,7 +254,8 @@
 		    var uploader_${formId} = $("#uploader_${formId}").plupload({
 		        // General settings
 		        runtimes : 'html5,flash,silverlight,html4',
-		        url : "../../../operation/${operationRESTPath}/upload",
+		        // use rest path
+		        url : "../../../operation/${operationRESTPath}/rest",
 
 		        // adding this for redirecting to page once upload complete
 		        preinit: function (Uploader) {

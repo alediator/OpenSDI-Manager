@@ -14,6 +14,9 @@ public class ControllerUtils {
  */
 public final static String DOT = ".";
 
+public static String SUCCESS = "success";
+public static String ROOT = "root";
+
 private final static Logger LOGGER = Logger.getLogger(ControllerUtils.class);
 
 public static void setCommonModel(ModelMap model) {

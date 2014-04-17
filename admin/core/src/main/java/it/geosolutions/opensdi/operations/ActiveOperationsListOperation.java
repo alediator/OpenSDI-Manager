@@ -41,7 +41,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
  *
  */
 @Controller
-public class ActiveOperationsListOperation implements ApplicationContextAware, Operation{
+public class ActiveOperationsListOperation extends AbstractOperationController implements ApplicationContextAware, Operation{
 	
 	private ApplicationContext applicationContext;
 

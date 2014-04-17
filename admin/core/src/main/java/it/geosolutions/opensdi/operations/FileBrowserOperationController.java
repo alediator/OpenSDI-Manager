@@ -25,10 +25,12 @@ import it.geosolutions.opensdi.mvc.model.statistics.ExtendedFileBrowser;
 import it.geosolutions.opensdi.mvc.model.statistics.FileBrowser;
 import it.geosolutions.opensdi.service.GeoBatchClient;
 import it.geosolutions.opensdi.utils.ControllerUtils;
+import it.geosolutions.opensdi.utils.GeoBatchRunInfoUtils;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -120,6 +122,56 @@ GeoBatchClient geoBatchClient;
 public FileBrowserOperationController() {
     setDefaultBaseDir("G:/OpenSDIManager/test_shapes/");
     uniqueKey = UUID.randomUUID();
+}
+
+/**
+ * @return the JSON response on file upload. Root key will contain all file names uploaded
+ */
+public Map<String, Object> getRestResponse(ModelMap model, HttpServletRequest request, List<File> files){
+
+    Map<String, Object> response = new HashMap<String, Object>();
+    try{
+        
+        // get target folder on the request
+        String targetFolder = (String) request.getParameterMap().get(DIRECTORY_KEY);
+        String baseDir =  getRunTimeDir();
+        if(targetFolder != null){
+            baseDir +=  GeoBatchRunInfoUtils.SEPARATOR + targetFolder;
+        }
+        baseDir =  ControllerUtils.normalizeSeparator(baseDir);
+
+        if(LOGGER.isTraceEnabled()){
+            LOGGER.trace("Target folder is: '" + baseDir + "'");
+        }
+        
+        List<String> completeFiles = new LinkedList<String>();
+        if (null != files && files.size() > 0) {
+            List<String> fileNames = new ArrayList<String>();
+            for (File multipartFile : files) {
+                if (multipartFile == null)
+                    continue;
+                String fileName = multipartFile.getName();
+                if (!"".equalsIgnoreCase(fileName)) {
+                    String targetPath = baseDir + fileName;
+                    multipartFile.renameTo(new File(targetPath));
+                    completeFiles.add(fileName);
+                    fileNames.add(fileName);
+                    if(LOGGER.isTraceEnabled()){
+                        LOGGER.trace("succesfully uploaded file on: '" + targetPath + "'");
+                    }
+                }
+                if(LOGGER.isDebugEnabled())
+                    LOGGER.debug("filename: " + fileName); // debug
+            }
+        }
+        response.put(ControllerUtils.SUCCESS, true);
+        response.put(ControllerUtils.ROOT, completeFiles);
+    }catch (Exception e){
+        LOGGER.error("Error uploading files", e);
+        response.put(ControllerUtils.SUCCESS, false);
+        response.put(ControllerUtils.ROOT, e.getLocalizedMessage());
+    }
+    return response;
 }
 
 /**
